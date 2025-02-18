@@ -138,18 +138,7 @@ impl Committer {
             .kill_on_drop(true);
 
         if let Some(key) = blob_key {
-            //cmd.env("COMMITTER__ETH__L1_KEYS__BLOB", key.clone());
-
-            // alt da
-            cmd.env("COMMITTER__DA_LAYER__TYPE", "EigenDA")
-                .env(
-                    "COMMITTER__DA_LAYER__RPC",
-                    "https://disperser-holesky.eigenda.xyz",
-                )
-                .env(
-                    "COMMITTER__DA_LAYER__KEY",
-                    "Private(8b449ef1d1a5297e7e14656d424f1c8710403ca0b0389d5001f11bbf844101ea)",
-                );
+            cmd.env("COMMITTER__ETH__L1_KEYS__BLOB", key.clone());
         }
 
         let sink = if self.show_logs {
