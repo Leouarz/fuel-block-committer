@@ -5,6 +5,8 @@ mod errors;
 mod setup;
 
 use api::launch_api_server;
+use availda::AvailDAClient;
+use config::DALayer;
 use eigenda::EigenDAClient;
 use errors::{Result, WithContext};
 use metrics::prometheus::Registry;
@@ -17,6 +19,7 @@ pub type L1 = eth::WebsocketClient;
 pub type Database = storage::Postgres;
 pub type FuelApi = fuel::HttpClient;
 pub type EigenDA = EigenDAClient;
+pub type AvailDA = AvailDAClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -74,18 +77,32 @@ async fn main() -> Result<()> {
             &internal_config,
             &metrics_registry,
         )?
-    } else if config.da_layer.is_some() {
-        setup::eigen_da_services(
-            fuel_adapter,
-            storage.clone(),
-            cancel_token.clone(),
-            &config,
-            &internal_config,
-            &metrics_registry,
-        )
-        .await?
     } else {
-        vec![]
+        match config.da_layer {
+            Some(DALayer::EigenDA(_)) => {
+                setup::eigen_da_services(
+                    fuel_adapter,
+                    storage.clone(),
+                    cancel_token.clone(),
+                    &config,
+                    &internal_config,
+                    &metrics_registry,
+                )
+                .await?
+            }
+            Some(DALayer::AvailDA(_)) => {
+                setup::avail_da_services(
+                    fuel_adapter,
+                    storage.clone(),
+                    cancel_token.clone(),
+                    &config,
+                    &internal_config,
+                    &metrics_registry,
+                )
+                .await?
+            }
+            _ => vec![],
+        }
     };
 
     handles.extend(da_handles);

@@ -1,7 +1,7 @@
 use nonempty::NonEmpty;
 
 use crate::{
-    types::{storage::BundleFragment, DateTime, EigenDASubmission, L1Tx, NonNegative, Utc},
+    types::{storage::BundleFragment, AvailDASubmission, DateTime, EigenDASubmission, L1Tx, NonNegative, Utc},
     Error, Result,
 };
 
@@ -69,6 +69,20 @@ pub mod eigen_da {
     }
 }
 
+pub mod avail_da {
+    use crate::{
+        types::{AvailDASubmission, Fragment},
+        Result,
+    };
+
+    #[allow(async_fn_in_trait)]
+    #[trait_variant::make(Send)]
+    #[cfg_attr(feature = "test-helpers", mockall::automock)]
+    pub trait Api {
+        async fn submit_state_fragment(&self, fragment: Fragment) -> Result<AvailDASubmission>;
+    }
+}
+
 pub mod fuel {
 
     use crate::Result;
@@ -105,6 +119,14 @@ pub trait Storage: Sync {
     async fn record_eigenda_submission(
         &self,
         submission: EigenDASubmission,
+        fragment_id: i32,
+        created_at: DateTime<Utc>,
+    ) -> Result<()>;
+
+    // AvailDA
+    async fn record_availda_submission(
+        &self,
+        submission: AvailDASubmission,
         fragment_id: i32,
         created_at: DateTime<Utc>,
     ) -> Result<()>;

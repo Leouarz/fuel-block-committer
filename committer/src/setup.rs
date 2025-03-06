@@ -1,5 +1,6 @@
 use std::{num::NonZeroU32, time::Duration};
 
+use availda::AvailDAClient;
 use clock::SystemClock;
 use eigenda::EigenDAClient;
 use eth::{AcceptablePriorityFeePercentages, BlobEncoder, Signers};
@@ -13,7 +14,10 @@ use services::{
     fee_metrics_tracker::service::FeeMetricsTracker,
     fees::cache::CachingApi,
     state_committer::port::Storage,
-    state_listener::{eigen_service::StateListener as EigenStateListener, service::StateListener},
+    state_listener::{
+        avail_service::StateListener as AvailStateListener,
+        eigen_service::StateListener as EigenStateListener, service::StateListener,
+    },
     state_pruner::service::StatePruner,
     wallet_balance_tracker::service::WalletBalanceTracker,
     BlockBundler, BlockBundlerConfig, Runner,
@@ -23,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::{
-    config::{self, DALayer, EigenDA},
+    config::{self, AvailDA, DALayer, EigenDA},
     errors::{Error, Result},
     Database, FuelApi, L1,
 };
@@ -211,6 +215,70 @@ pub async fn eigen_da_services(
     Ok(handles)
 }
 
+pub async fn avail_da_services(
+    fuel: FuelApi,
+    storage: Database,
+    cancel_token: CancellationToken,
+    config: &config::Config,
+    internal_config: &config::Internal,
+    registry: &Registry,
+) -> Result<Vec<tokio::task::JoinHandle<()>>> {
+    let block_bundler = avail_block_bundler(
+        fuel.clone(),
+        storage.clone(),
+        cancel_token.clone(),
+        &config,
+        &registry,
+    );
+
+    let (state_committer_handle, state_listener_handle) = match config.da_layer.clone() {
+        Some(DALayer::AvailDA(avail_config)) => {
+            let avail_da = avail_adapter(&avail_config, &internal_config).await?;
+            let committer = avail_state_committer(
+                fuel.clone(),
+                avail_da.clone(),
+                storage.clone(),
+                cancel_token.clone(),
+                &config,
+                &registry,
+            )?;
+
+            let listener = avail_state_listener(
+                avail_da,
+                storage.clone(),
+                cancel_token.clone(),
+                &config,
+                &registry,
+                last_finalization_metric(), // TODO will this match on name
+            )?;
+
+            (committer, listener)
+        }
+        _ => {
+            return Err(Error::Other("Invalid da layer config".to_string()));
+        }
+    };
+
+    let state_importer_handle = block_importer(
+        fuel,
+        storage.clone(),
+        cancel_token.clone(),
+        &config,
+        &internal_config,
+    );
+
+    // TODO: no pruner or fee metric handle
+
+    let handles = vec![
+        state_committer_handle,
+        state_importer_handle,
+        block_bundler,
+        state_listener_handle,
+    ];
+
+    Ok(handles)
+}
+
 pub fn eigen_block_bundler(
     fuel: FuelApi,
     storage: Database,
@@ -219,6 +287,47 @@ pub fn eigen_block_bundler(
     registry: &Registry,
 ) -> tokio::task::JoinHandle<()> {
     let bundler_factory = services::EigenBundlerFactory::new(
+        bundle::Encoder::new(config.app.bundle.compression_level),
+        NonZeroU32::new(15_000_000).unwrap(), // TODO pass this via config
+        config.app.bundle.max_fragments_per_bundle,
+    );
+
+    let block_bundler = BlockBundler::new(
+        fuel,
+        storage,
+        SystemClock,
+        bundler_factory,
+        BlockBundlerConfig {
+            optimization_time_limit: Duration::from_secs(0),
+            accumulation_time_limit: config.app.bundle.accumulation_timeout,
+            blocks_to_accumulate: config.app.bundle.blocks_to_accumulate,
+            lookback_window: config.app.bundle.block_height_lookback,
+            bytes_to_accumulate: config.app.bundle.bytes_to_accumulate,
+            max_fragments_per_bundle: config.app.bundle.max_fragments_per_bundle,
+            max_bundles_per_optimization_run: num_cpus::get()
+                .try_into()
+                .expect("num cpus not zero"),
+        },
+    );
+
+    block_bundler.register_metrics(registry);
+
+    schedule_polling(
+        config.app.bundle.new_bundle_check_interval,
+        block_bundler,
+        "Block Bundler",
+        cancel_token,
+    )
+}
+
+pub fn avail_block_bundler(
+    fuel: FuelApi,
+    storage: Database,
+    cancel_token: CancellationToken,
+    config: &config::Config,
+    registry: &Registry,
+) -> tokio::task::JoinHandle<()> {
+    let bundler_factory = services::AvailBundlerFactory::new(
         bundle::Encoder::new(config.app.bundle.compression_level),
         NonZeroU32::new(15_000_000).unwrap(), // TODO pass this via config
         config.app.bundle.max_fragments_per_bundle,
@@ -357,6 +466,35 @@ pub fn eigen_state_committer(
     ))
 }
 
+pub fn avail_state_committer(
+    fuel: FuelApi,
+    avail_da: AvailDAClient,
+    storage: Database,
+    cancel_token: CancellationToken,
+    config: &config::Config,
+    registry: &Registry,
+) -> Result<tokio::task::JoinHandle<()>> {
+    let state_committer = services::AvailStateCommitter::new(
+        avail_da,
+        fuel,
+        storage,
+        services::AvailStatecommitterConfig {
+            api_throughput: 16, // TODO
+            lookback_window: config.app.bundle.block_height_lookback,
+        },
+        SystemClock,
+    );
+
+    state_committer.register_metrics(registry);
+
+    Ok(schedule_polling(
+        config.app.tx_finalization_check_interval,
+        state_committer,
+        "State Committer",
+        cancel_token,
+    ))
+}
+
 pub fn eigen_state_listener(
     eigen_da: EigenDAClient,
     storage: Database,
@@ -366,6 +504,26 @@ pub fn eigen_state_listener(
     last_finalization: IntGauge,
 ) -> Result<tokio::task::JoinHandle<()>> {
     let state_committer = EigenStateListener::new(eigen_da, storage, last_finalization);
+
+    state_committer.register_metrics(registry);
+
+    Ok(schedule_polling(
+        config.app.tx_finalization_check_interval,
+        state_committer,
+        "State Listener",
+        cancel_token,
+    ))
+}
+
+pub fn avail_state_listener(
+    avail_da: AvailDAClient,
+    storage: Database,
+    cancel_token: CancellationToken,
+    config: &config::Config,
+    registry: &Registry,
+    last_finalization: IntGauge,
+) -> Result<tokio::task::JoinHandle<()>> {
+    let state_committer = AvailStateListener::new(avail_da, storage, last_finalization);
 
     state_committer.register_metrics(registry);
 
@@ -491,6 +649,19 @@ pub async fn eigen_adapter(
         .expect("TODO add err conversion");
 
     Ok(eigen_da)
+}
+
+pub async fn avail_adapter(
+    config: &AvailDA,
+    _internal_config: &config::Internal,
+) -> Result<AvailDAClient> {
+    // TODO add health tracking
+
+    let avail_da = AvailDAClient::new(config.key.clone(), config.rpc.clone())
+        .await
+        .expect("TODO add err conversion");
+
+    Ok(avail_da)
 }
 
 fn schedule_polling(

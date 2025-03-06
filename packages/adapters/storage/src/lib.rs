@@ -13,9 +13,10 @@ pub use postgres::{DbConfig, Postgres};
 use services::{
     block_bundler::port::UnbundledBlocks,
     types::{
-        storage::BundleFragment, BlockSubmission, BlockSubmissionTx, BundleCost,
-        CompressedFuelBlock, DateTime, DispersalStatus, EigenDASubmission, Fragment, L1Tx,
-        NonEmpty, NonNegative, TransactionCostUpdate, TransactionState, Utc,
+        storage::BundleFragment, AvailDASubmission, AvailDispersalStatus,
+        BlockSubmission, BlockSubmissionTx, BundleCost, CompressedFuelBlock, DateTime,
+        DispersalStatus, EigenDASubmission, Fragment, L1Tx, NonEmpty, NonNegative,
+        TransactionCostUpdate, TransactionState, Utc,
     },
     Result,
 };
@@ -57,6 +58,21 @@ impl services::state_listener::port::Storage for Postgres {
         changes: Vec<(u32, DispersalStatus)>,
     ) -> services::Result<()> {
         self._update_eigen_submissions(changes)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_non_finalized_avail_submission(&self) -> services::Result<Vec<AvailDASubmission>> {
+        self._get_non_finalized_avail_submission()
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn update_avail_submissions(
+        &self,
+        changes: Vec<(u32, AvailDispersalStatus)>,
+    ) -> services::Result<()> {
+        self._update_avail_submissions(changes)
             .await
             .map_err(Into::into)
     }
@@ -206,6 +222,17 @@ impl services::state_committer::port::Storage for Postgres {
         created_at: DateTime<Utc>,
     ) -> services::Result<()> {
         self._record_eigenda_submission(submission, fragment_id, created_at)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn record_availda_submission(
+        &self,
+        submission: AvailDASubmission,
+        fragment_id: i32,
+        created_at: DateTime<Utc>,
+    ) -> services::Result<()> {
+        self._record_availda_submission(submission, fragment_id, created_at)
             .await
             .map_err(Into::into)
     }

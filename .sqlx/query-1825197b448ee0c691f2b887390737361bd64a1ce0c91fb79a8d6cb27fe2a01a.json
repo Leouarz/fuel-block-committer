@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO avail_submission_fragments (submission_id, fragment_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1825197b448ee0c691f2b887390737361bd64a1ce0c91fb79a8d6cb27fe2a01a"
+}
