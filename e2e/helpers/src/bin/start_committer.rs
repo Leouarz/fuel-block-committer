@@ -17,8 +17,8 @@ async fn main() -> Result<()> {
 
     let eth_node = start_eth(false).await?;
     let main_key = create_and_fund_kms_key(&kms, &eth_node).await?;
-    let eigen_key = "".to_string(); // TODO: fill in eigen_key
-    let avail_key = "//Alice".to_string();
+    // let eigen_key = "".to_string(); // TODO: fill in eigen_key
+    let avail_key = "//Bob".to_string();
 
     let (_, deployed_contract) = deploy_contract(&eth_node, &main_key).await?;
 
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
             .with_main_key_arn(main_key.id.clone())
             .with_kms_url(main_key.url)
             .with_bundle_accumulation_timeout("3600s".to_owned())
-            .with_block_bytes_to_accumulate("3 MB".to_string())
+            .with_block_bytes_to_accumulate("1 MB".to_string())
             .with_bundle_optimization_timeout("60s".to_owned())
             .with_bundle_block_height_lookback("8500".to_owned())
             .with_bundle_optimization_step("100".to_owned())

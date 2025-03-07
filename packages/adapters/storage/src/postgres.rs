@@ -300,8 +300,8 @@ impl Postgres {
             b.end_height >= $2
             AND NOT EXISTS (
                 SELECT 1
-                FROM eigen_submission_fragments tf
-                JOIN eigen_submission t ON t.id = tf.submission_id
+                FROM avail_submission_fragments tf
+                JOIN avail_submission t ON t.id = tf.submission_id
                 WHERE tf.fragment_id = f.id
                   AND t.status <> $1
             )
@@ -1389,12 +1389,10 @@ impl Postgres {
 
         let row = avail_tables::AvailDASubmission::from(submission);
         let submission_id = sqlx::query!(
-            "INSERT INTO avail_submission (tx_hash, tx_id, block_hash, block_number, status, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            "INSERT INTO avail_submission (tx_hash, block_number, status, created_at) VALUES ($1, $2, $3, $4) RETURNING id",
             row.tx_hash,
-            row.tx_id,
-            row.block_hash,
             row.block_number,
-            i16::from(avail_tables::AvailSubmissionStatus::Processing),
+            row.status,
             created_at
         )
         .fetch_one(&mut *tx)
@@ -1419,7 +1417,7 @@ impl Postgres {
     ) -> Result<Vec<AvailDASubmission>> {
         sqlx::query_as!(
             avail_tables::AvailDASubmission,
-            "SELECT id, tx_hash, tx_id, block_hash, block_number, created_at, status FROM avail_submission WHERE status = $1 or status = $2",
+            "SELECT id, tx_hash, block_number, created_at, status FROM avail_submission WHERE status = $1 or status = $2",
             i16::from(avail_tables::AvailSubmissionStatus::Processing),
             i16::from(avail_tables::AvailSubmissionStatus::Confirmed),
         )

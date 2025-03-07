@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n        sub.id,\n        sub.idx,\n        sub.bundle_id,\n        sub.data,\n        sub.unused_bytes,\n        sub.total_bytes,\n        sub.start_height\n    FROM (\n        SELECT DISTINCT ON (f.id)\n            f.*,\n            b.start_height\n        FROM l1_fragments f\n        JOIN bundles b ON b.id = f.bundle_id\n        WHERE\n            b.end_height >= $2\n            AND NOT EXISTS (\n                SELECT 1\n                FROM eigen_submission_fragments tf\n                JOIN eigen_submission t ON t.id = tf.submission_id\n                WHERE tf.fragment_id = f.id\n                  AND t.status <> $1\n            )\n        ORDER BY\n            f.id,\n            b.start_height ASC,\n            f.idx ASC\n    ) AS sub\n    ORDER BY\n        sub.start_height ASC,\n        sub.idx ASC\n    LIMIT $3;\n",
+  "query": "SELECT\n        sub.id,\n        sub.idx,\n        sub.bundle_id,\n        sub.data,\n        sub.unused_bytes,\n        sub.total_bytes,\n        sub.start_height\n    FROM (\n        SELECT DISTINCT ON (f.id)\n            f.*,\n            b.start_height\n        FROM l1_fragments f\n        JOIN bundles b ON b.id = f.bundle_id\n        WHERE\n            b.end_height >= $2\n            AND NOT EXISTS (\n                SELECT 1\n                FROM avail_submission_fragments tf\n                JOIN avail_submission t ON t.id = tf.submission_id\n                WHERE tf.fragment_id = f.id\n                  AND t.status <> $1\n            )\n        ORDER BY\n            f.id,\n            b.start_height ASC,\n            f.idx ASC\n    ) AS sub\n    ORDER BY\n        sub.start_height ASC,\n        sub.idx ASC\n    LIMIT $3;\n",
   "describe": {
     "columns": [
       {
@@ -56,5 +56,5 @@
       false
     ]
   },
-  "hash": "4e6581709112d5d929e525113dc4ed279da2291a4812fa1be1de3e636e6d573d"
+  "hash": "97f9cd9f7498206f27dee6f8b8bed481248d1e05f1464396df5e083348894b85"
 }

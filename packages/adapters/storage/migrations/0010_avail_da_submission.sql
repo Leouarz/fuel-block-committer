@@ -3,8 +3,6 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS avail_submission (
     id              SERIAL PRIMARY KEY,
     tx_hash         BYTEA NOT NULL UNIQUE,
-    tx_id           INTEGER NOT NULL,
-    block_hash      BYTEA NOT NULL,
     block_number    INTEGER NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status          SMALLINT NOT NULL,

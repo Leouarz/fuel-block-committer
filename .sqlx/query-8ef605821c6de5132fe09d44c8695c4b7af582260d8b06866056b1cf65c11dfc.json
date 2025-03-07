@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, tx_hash, tx_id, block_hash, block_number, created_at, status FROM avail_submission WHERE status = $1 or status = $2",
+  "query": "SELECT id, tx_hash, block_number, created_at, status FROM avail_submission WHERE status = $1 or status = $2",
   "describe": {
     "columns": [
       {
@@ -15,26 +15,16 @@
       },
       {
         "ordinal": 2,
-        "name": "tx_id",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 3,
-        "name": "block_hash",
-        "type_info": "Bytea"
-      },
-      {
-        "ordinal": 4,
         "name": "block_number",
         "type_info": "Int4"
       },
       {
-        "ordinal": 5,
+        "ordinal": 3,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 4,
         "name": "status",
         "type_info": "Int2"
       }
@@ -50,10 +40,8 @@
       false,
       false,
       false,
-      false,
-      false,
       false
     ]
   },
-  "hash": "2192977307921272078813d47b6f496730801e2e1d008d607235fcf6cf20e74e"
+  "hash": "8ef605821c6de5132fe09d44c8695c4b7af582260d8b06866056b1cf65c11dfc"
 }

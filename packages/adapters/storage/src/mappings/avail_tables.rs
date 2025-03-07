@@ -5,8 +5,6 @@ use services::types::{AvailDispersalStatus, DateTime, Utc};
 pub struct AvailDASubmission {
     pub id: i32,
     pub tx_hash: Vec<u8>,
-    pub tx_id: i32,
-    pub block_hash: Vec<u8>,
     pub block_number: i32,
     pub created_at: Option<DateTime<Utc>>,
     pub status: i16,
@@ -44,8 +42,6 @@ impl From<services::types::AvailDASubmission> for AvailDASubmission {
             // if not present use placeholder as id is given by db
             id: value.id.unwrap_or_default() as i32,
             tx_hash: value.tx_hash.as_bytes().to_vec(),
-            tx_id: value.tx_id as i32,
-            block_hash: value.block_hash.as_bytes().to_vec(),
             block_number: value.block_number as i32,
             status,
             created_at: value.created_at,
@@ -69,8 +65,6 @@ impl TryFrom<AvailDASubmission> for services::types::AvailDASubmission {
         Ok(Self {
             id: Some(id),
             tx_hash: H256::from_slice(&value.tx_hash),
-            tx_id: value.tx_id as u32,
-            block_hash: H256::from_slice(&value.block_hash),
             block_number: value.block_number as u32,
             status,
             created_at: value.created_at,
