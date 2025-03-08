@@ -1,7 +1,10 @@
 use nonempty::NonEmpty;
 
 use crate::{
-    types::{storage::BundleFragment, AvailDASubmission, DateTime, EigenDASubmission, L1Tx, NonNegative, Utc},
+    types::{
+        storage::BundleFragment, AvailDASubmission, DateTime, EigenDASubmission, L1Tx, NonNegative,
+        Utc,
+    },
     Error, Result,
 };
 
@@ -74,12 +77,16 @@ pub mod avail_da {
         types::{AvailDASubmission, Fragment},
         Result,
     };
+    use nonempty::NonEmpty;
 
     #[allow(async_fn_in_trait)]
     #[trait_variant::make(Send)]
     #[cfg_attr(feature = "test-helpers", mockall::automock)]
     pub trait Api {
-        async fn submit_state_fragment(&self, fragment: Fragment) -> Result<AvailDASubmission>;
+        async fn submit_state_fragments(
+            &self,
+            fragments: NonEmpty<Fragment>,
+        ) -> Result<Vec<AvailDASubmission>>;
     }
 }
 

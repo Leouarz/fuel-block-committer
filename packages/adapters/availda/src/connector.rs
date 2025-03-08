@@ -1,10 +1,21 @@
-use avail_rust::{prelude::ClientError, Keypair, SecretUri, SDK as AvailSDK};
+use avail_rust::{
+    account, prelude::ClientError, transactions::da::SubmitDataCall, Keypair, SecretUri,
+    Transaction, SDK as AvailSDK,
+};
+use avail_rust::{AOnlineClient, Client};
 use core::str::FromStr;
+use futures::stream::{FuturesOrdered, StreamExt};
 use services::{
-    types::{AvailDASubmission, AvailDispersalStatus, Fragment},
+    types::{AvailDASubmission, AvailDispersalStatus, Fragment, NonEmpty},
     Error as ServiceError, Result as ServiceResult,
 };
+use std::time::Duration;
 use url::Url;
+
+use avail_rust::subxt::backend::rpc::{
+    reconnecting_rpc_client::{ExponentialBackoff, RpcClient as ReconnectingRpcClient},
+    RpcClient,
+};
 
 #[derive(Debug, Clone)]
 pub struct AvailDAClient {
@@ -14,9 +25,26 @@ pub struct AvailDAClient {
 
 impl AvailDAClient {
     pub async fn new(key: String, rpc: Url) -> Result<Self, ClientError> {
-        let sdk = AvailSDK::new(&rpc.to_string()).await?;
+        let rpc_client = ReconnectingRpcClient::builder()
+            .max_request_size(65 * 1024 * 1024)
+            .max_response_size(1024 * 1024 * 1024)
+            .retry_policy(
+                ExponentialBackoff::from_millis(1000)
+                    .max_delay(Duration::from_secs(3))
+                    .take(3),
+            )
+            .build(rpc)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let rpc_client = RpcClient::new(rpc_client);
+        let online_client = AOnlineClient::from_rpc_client(rpc_client.clone()).await?;
+        let client = Client::new(online_client, rpc_client);
+        let sdk = AvailSDK::new_custom(client).await?;
+
         let secret_uri = SecretUri::from_str(&key)?;
         let account = Keypair::from_uri(&secret_uri)?;
+        AvailSDK::enable_logging();
 
         Ok(Self {
             client: sdk,
@@ -26,26 +54,52 @@ impl AvailDAClient {
 }
 
 impl services::state_committer::port::avail_da::Api for AvailDAClient {
-    async fn submit_state_fragment(&self, fragment: Fragment) -> ServiceResult<AvailDASubmission> {
-        let data: Vec<_> = fragment.data.into_iter().collect();
-        let options = avail_rust::Options::new().app_id(0);
-        let tx = self.client.tx.data_availability.submit_data(data);
-
-        let tx_hash = tx
-            .execute(&self.signer, options)
+    async fn submit_state_fragments(
+        &self,
+        fragments: NonEmpty<Fragment>,
+    ) -> ServiceResult<Vec<AvailDASubmission>> {
+        let account_id = self.signer.public_key().to_account_id().to_string();
+        let nonce = account::nonce(&self.client.client, &account_id)
             .await
-            .map_err(|e| ServiceError::Other(format!("Failed to send blob on Avail: {e:?}")))?;
-        let block_number = self.client.client.best_block_number().await.map_err(|e| {
-            ServiceError::Other(format!("Failed to get latest block number on Avail: {e:?}"))
+            .map_err(|e| {
+                ServiceError::Other(format!("Failed to get account nonce on Avail: {e:?}"))
+            })?;
+
+        let calls: Vec<Transaction<SubmitDataCall>> = fragments
+            .into_iter()
+            .map(|fragment| {
+                let data: Vec<_> = fragment.data.into_iter().collect();
+                self.client.tx.data_availability.submit_data(data)
+            })
+            .collect();
+
+        let mut futures = FuturesOrdered::new();
+        for (i, tx) in calls.iter().enumerate() {
+            let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
+            futures.push_back(tx.execute(&self.signer, options));
+        }
+
+        let current_block_number = self.client.client.best_block_number().await.map_err(|e| {
+            ServiceError::Other(format!("Could not get best block number in Avail: {:?}", e))
         })?;
 
-        Ok(AvailDASubmission {
-            tx_hash: tx_hash,
-            block_number: block_number,
-            created_at: None,
-            status: AvailDispersalStatus::Processing,
-            ..Default::default()
-        })
+        let mut submissions = Vec::with_capacity(calls.len());
+        while let Some(result) = futures.next().await {
+            let tx_hash = result.map_err(|e| {
+                ServiceError::Other(format!("Avail Transaction submission failed: {:?}", e))
+            })?;
+
+            let submission = AvailDASubmission {
+                tx_hash,
+                block_number: current_block_number,
+                created_at: None,
+                status: AvailDispersalStatus::Processing,
+                ..Default::default()
+            };
+            submissions.push(submission);
+        }
+
+        Ok(submissions)
     }
 }
 

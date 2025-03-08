@@ -1,7 +1,10 @@
+use crate::types::CollectNonEmpty;
+use itertools::Itertools;
 use metrics::{
     prometheus::{core::Collector, IntGauge, Opts},
     RegistersMetrics,
 };
+use nonempty::NonEmpty;
 use tracing::info;
 
 use crate::{types::storage::BundleFragment, Result, Runner};
@@ -91,25 +94,44 @@ where
     Db: crate::state_committer::port::Storage,
     Clock: crate::state_committer::port::Clock,
 {
-    async fn submit_fragment(&self, fragment: BundleFragment) -> Result<()> {
+    async fn submit_fragments(&self, fragments: NonEmpty<BundleFragment>) -> Result<()> {
         info!(
-            "about to send a fragment with size: {}",
-            fragment.fragment.data.len()
+            "about to send at most {} fragments, first fragment size: {}",
+            fragments.len(),
+            fragments.head.fragment.data.len()
         );
 
-        let fragment_id = fragment.id;
-        match self.da_layer.submit_state_fragment(fragment.fragment).await {
-            Ok(submitted_tx) => {
-                let tx_hash = submitted_tx.tx_hash.clone();
-                self.storage
-                    .record_availda_submission(submitted_tx, fragment.id.as_i32(), self.clock.now())
-                    .await?;
+        let data = fragments.clone().map(|f| f.fragment);
 
-                tracing::info!("Submitted fragment {fragment_id} with tx hash {tx_hash:?}");
+        match self.da_layer.submit_state_fragments(data).await {
+            Ok(submitted_txs) => {
+                let fragment_ids = fragments
+                    .iter()
+                    .map(|f| f.id)
+                    .take(submitted_txs.len())
+                    .collect_nonempty()
+                    .expect("non-empty vec");
+
+                for (submitted_tx, fragment_id) in submitted_txs.into_iter().zip(fragment_ids) {
+                    let tx_hash = submitted_tx.tx_hash.clone();
+                    self.storage
+                        .record_availda_submission(
+                            submitted_tx,
+                            fragment_id.as_i32(),
+                            self.clock.now(),
+                        )
+                        .await?;
+                    tracing::info!("Submitted fragment {:?} with tx {:?}", fragment_id, tx_hash);
+                }
+
                 Ok(())
             }
             Err(e) => {
-                tracing::error!("Failed to submit fragment {fragment_id}: {e}");
+                let ids = fragments
+                    .iter()
+                    .map(|f| f.id.as_u32().to_string())
+                    .join(", ");
+                tracing::error!("Failed to submit fragments {ids}: {e}");
                 Err(e)
             }
         }
@@ -121,34 +143,36 @@ where
             .set(oldest_height.into());
     }
 
-    async fn next_fragment_to_submit(&self) -> Result<Option<BundleFragment>> {
+    async fn next_fragments_to_submit(&self) -> Result<Option<NonEmpty<BundleFragment>>> {
         let latest_height = self.fuel_api.latest_height().await?;
         let starting_height = latest_height.saturating_sub(self.config.lookback_window);
 
-        let fragment = self
+        let existing_fragments = self
             .storage
-            .oldest_unsubmitted_fragments(starting_height, 6)
-            .await?
-            .first()
-            .cloned();
+            .oldest_unsubmitted_fragments(starting_height, 10)
+            .await?;
 
-        if let Some(ref frag) = fragment {
-            self.update_oldest_block_metric(frag.oldest_block_in_bundle);
+        let fragments = NonEmpty::collect(existing_fragments);
+
+        if let Some(fragments) = fragments.as_ref() {
+            self.update_oldest_block_metric(
+                fragments
+                    .minimum_by_key(|b| b.oldest_block_in_bundle)
+                    .oldest_block_in_bundle,
+            );
         }
 
-        Ok(fragment)
+        Ok(fragments)
     }
 
-    async fn should_submit(&self, fragment: &BundleFragment) -> Result<bool> {
-        // TODO check if avail API is ready to accept more data
-        let _size = fragment.fragment.data.len();
-
+    async fn should_submit(&self, _fragments: &NonEmpty<BundleFragment>) -> Result<bool> {
+        // TODO Avail check if avail API is ready to accept more data, probably add a check on the mempool
         Ok(true)
     }
 
-    async fn submit_fragment_if_ready(&self, fragment: BundleFragment) -> Result<()> {
-        if self.should_submit(&fragment).await? {
-            self.submit_fragment(fragment).await?;
+    async fn submit_fragments_if_ready(&self, fragments: NonEmpty<BundleFragment>) -> Result<()> {
+        if self.should_submit(&fragments).await? {
+            self.submit_fragments(fragments).await?;
         }
 
         Ok(())
@@ -173,8 +197,8 @@ where
     Clock: crate::state_committer::port::Clock + Send + Sync,
 {
     async fn run(&mut self) -> Result<()> {
-        if let Some(fragment) = self.next_fragment_to_submit().await? {
-            self.submit_fragment_if_ready(fragment).await?;
+        if let Some(fragments) = self.next_fragments_to_submit().await? {
+            self.submit_fragments_if_ready(fragments).await?;
         } else {
             self.update_current_height_to_commit_metric().await?;
         };
