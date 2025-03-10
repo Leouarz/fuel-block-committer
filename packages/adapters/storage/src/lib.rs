@@ -13,10 +13,10 @@ pub use postgres::{DbConfig, Postgres};
 use services::{
     block_bundler::port::UnbundledBlocks,
     types::{
-        storage::BundleFragment, AvailDASubmission, AvailDispersalStatus,
-        BlockSubmission, BlockSubmissionTx, BundleCost, CompressedFuelBlock, DateTime,
-        DispersalStatus, EigenDASubmission, Fragment, L1Tx, NonEmpty, NonNegative,
-        TransactionCostUpdate, TransactionState, Utc,
+        storage::{BundleFragment, SequentialFuelBlocks},
+        AvailDASubmission, AvailDispersalStatus, BlockSubmission, BlockSubmissionTx, BundleCost,
+        CompressedFuelBlock, DateTime, DispersalStatus, EigenDASubmission, Fragment, L1Tx,
+        NonEmpty, NonNegative, TransactionCostUpdate, TransactionState, Utc,
     },
     Result,
 };
@@ -1308,7 +1308,7 @@ mod tests {
         let bundle_b_id = storage.next_bundle_id().await.unwrap();
 
         let random_frag = || {
-            let data: [u8; 2] = thread_rng().gen();
+            let data: [u8; 2] = thread_rng().r#gen();
             Fragment {
                 data: nonempty![data[0], data[1]],
                 unused_bytes: 0,

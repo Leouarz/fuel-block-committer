@@ -52,7 +52,6 @@ pub mod avail_da {
         ) -> Result<AvailDispersalStatus>;
     }
 }
-
 #[allow(async_fn_in_trait)]
 #[trait_variant::make(Send)]
 pub trait Storage: Sync {

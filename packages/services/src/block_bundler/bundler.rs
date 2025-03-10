@@ -5,10 +5,10 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 use crate::{
-    types::{
-        storage::SequentialFuelBlocks, CollectNonEmpty, CompressedFuelBlock, NonEmpty, NonNegative,
-    },
     Result,
+    types::{
+        CollectNonEmpty, CompressedFuelBlock, NonEmpty, NonNegative, storage::SequentialFuelBlocks,
+    },
 };
 
 use super::{

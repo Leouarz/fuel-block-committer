@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{App, HttpResponse, HttpServer, web};
 use anyhow::Result;
 use e2e_helpers::{
     fuel_node_simulated::{Compressibility, FuelNode, SimulationConfig},
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     let kms = start_kms(logs).await?;
     let eth_node = start_eth(logs).await?;
     let (main_key, _) = create_and_fund_kms_keys(&kms, &eth_node).await?;
-    // let eigen_key = "8b449ef1d1a5297e7e14656d424f1c8710403ca0b0389d5001f11bbf844101ea".to_string();
+    // let eigen_key = "MASTER".to_string();
     let avail_key = "//Bob".to_string();
     let request_timeout = Duration::from_secs(50);
     let max_fee = 1_000_000_000_000;

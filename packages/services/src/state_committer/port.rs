@@ -1,19 +1,19 @@
 use nonempty::NonEmpty;
 
 use crate::{
-    types::{
-        storage::BundleFragment, AvailDASubmission, DateTime, EigenDASubmission, L1Tx, NonNegative,
-        Utc,
-    },
     Error, Result,
+    types::{
+        AvailDASubmission, DateTime, EigenDASubmission, L1Tx, NonNegative, Utc,
+        storage::BundleFragment,
+    },
 };
 
 pub mod l1 {
     use nonempty::NonEmpty;
 
     use crate::{
-        types::{BlockSubmissionTx, Fragment, FragmentsSubmitted, L1Tx},
         Error, Result,
+        types::{BlockSubmissionTx, Fragment, FragmentsSubmitted, L1Tx},
     };
     #[allow(async_fn_in_trait)]
     #[trait_variant::make(Send)]
@@ -60,8 +60,8 @@ pub mod l1 {
 
 pub mod eigen_da {
     use crate::{
-        types::{EigenDASubmission, Fragment},
         Result,
+        types::{EigenDASubmission, Fragment},
     };
 
     #[allow(async_fn_in_trait)]
@@ -74,8 +74,8 @@ pub mod eigen_da {
 
 pub mod avail_da {
     use crate::{
-        types::{AvailDASubmission, Fragment},
         Result,
+        types::{AvailDASubmission, Fragment},
     };
     use nonempty::NonEmpty;
 
