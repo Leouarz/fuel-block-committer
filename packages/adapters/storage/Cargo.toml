@@ -29,7 +29,7 @@ sqlx = { workspace = true, features = [
   "tls-rustls",
   "time",
   "chrono",
-  "json",
+  "json"
 ] }
 testcontainers = { workspace = true, optional = true, features = [
   "signal-hook",
