@@ -1,20 +1,21 @@
 use avail_rust::{
-    account, prelude::ClientError, transactions::da::SubmitDataCall, Keypair, SecretUri,
-    Transaction, SDK as AvailSDK,
+    AOnlineClient, Client, Keypair, SDK as AvailSDK, SecretUri, Transaction, account,
+    da_commitments::DaCommitmentBuilder,
+    prelude::ClientError,
+    transactions::da::{SubmitDataCall, SubmitDataWithCommitmentsCall},
 };
-use avail_rust::{AOnlineClient, Client};
 use core::str::FromStr;
 use futures::stream::{FuturesOrdered, StreamExt};
 use services::{
-    types::{AvailDASubmission, AvailDispersalStatus, Fragment, NonEmpty},
     Error as ServiceError, Result as ServiceResult,
+    types::{AvailDASubmission, AvailDispersalStatus, Fragment, NonEmpty},
 };
 use std::time::Duration;
 use url::Url;
 
 use avail_rust::subxt::backend::rpc::{
-    reconnecting_rpc_client::{ExponentialBackoff, RpcClient as ReconnectingRpcClient},
     RpcClient,
+    reconnecting_rpc_client::{ExponentialBackoff, RpcClient as ReconnectingRpcClient},
 };
 
 #[derive(Debug, Clone)]
@@ -65,11 +66,18 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
                 ServiceError::Other(format!("Failed to get account nonce on Avail: {e:?}"))
             })?;
 
-        let calls: Vec<Transaction<SubmitDataCall>> = fragments
+        // BIG BLOCKS
+        let calls: Vec<Transaction<SubmitDataWithCommitmentsCall>> = fragments
             .into_iter()
             .map(|fragment| {
                 let data: Vec<_> = fragment.data.into_iter().collect();
-                self.client.tx.data_availability.submit_data(data)
+                let commitments = DaCommitmentBuilder::new(data.clone())
+                    .build()
+                    .expect("DaCommitment Failed on Avail"); // TODO Add better errors !
+                self.client
+                    .tx
+                    .data_availability
+                    .submit_data_with_commitments(data, commitments)
             })
             .collect();
 
@@ -78,6 +86,21 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
             futures.push_back(tx.execute(&self.signer, options));
         }
+
+        // SMALL BLOCKS
+        // let calls: Vec<Transaction<SubmitDataCall>> = fragments
+        //     .into_iter()
+        //     .map(|fragment| {
+        //         let data: Vec<_> = fragment.data.into_iter().collect();
+        //         self.client.tx.data_availability.submit_data(data)
+        //     })
+        //     .collect();
+
+        // let mut futures = FuturesOrdered::new();
+        // for (i, tx) in calls.iter().enumerate() {
+        //     let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
+        //     futures.push_back(tx.execute(&self.signer, options));
+        // }
 
         let current_block_number = self.client.client.best_block_number().await.map_err(|e| {
             ServiceError::Other(format!("Could not get best block number in Avail: {:?}", e))
