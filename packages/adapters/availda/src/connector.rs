@@ -17,6 +17,7 @@ use avail_rust::subxt::backend::rpc::{
     RpcClient,
     reconnecting_rpc_client::{ExponentialBackoff, RpcClient as ReconnectingRpcClient},
 };
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct AvailDAClient {
@@ -66,18 +67,27 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
                 ServiceError::Other(format!("Failed to get account nonce on Avail: {e:?}"))
             })?;
 
-        // BIG BLOCKS
+        // TODO AVAIL BIG BLOCKS
         let calls: Vec<Transaction<SubmitDataWithCommitmentsCall>> = fragments
             .into_iter()
-            .map(|fragment| {
+            .filter_map(|fragment| {
                 let data: Vec<_> = fragment.data.into_iter().collect();
-                let commitments = DaCommitmentBuilder::new(data.clone())
-                    .build()
-                    .expect("DaCommitment Failed on Avail"); // TODO Add better errors !
-                self.client
-                    .tx
-                    .data_availability
-                    .submit_data_with_commitments(data, commitments)
+                let start = std::time::Instant::now();
+                let commitments_result = DaCommitmentBuilder::new(data.clone()).build();
+                let elapsed = start.elapsed();
+                info!("Avail Commitment generation took {:?}", elapsed);
+                match commitments_result {
+                    Ok(commitments) => Some(
+                        self.client
+                            .tx
+                            .data_availability
+                            .submit_data_with_commitments(data, commitments),
+                    ),
+                    Err(e) => {
+                        error!("Avail commitment generation failed: {:?}", e);
+                        None
+                    }
+                }
             })
             .collect();
 
@@ -87,7 +97,7 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             futures.push_back(tx.execute(&self.signer, options));
         }
 
-        // SMALL BLOCKS
+        // // TODO AVAIL SMALL BLOCKS
         // let calls: Vec<Transaction<SubmitDataCall>> = fragments
         //     .into_iter()
         //     .map(|fragment| {
@@ -108,18 +118,21 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
 
         let mut submissions = Vec::with_capacity(calls.len());
         while let Some(result) = futures.next().await {
-            let tx_hash = result.map_err(|e| {
-                ServiceError::Other(format!("Avail Transaction submission failed: {:?}", e))
-            })?;
-
-            let submission = AvailDASubmission {
-                tx_hash,
-                block_number: current_block_number,
-                created_at: None,
-                status: AvailDispersalStatus::Processing,
-                ..Default::default()
-            };
-            submissions.push(submission);
+            match result {
+                Ok(tx_hash) => {
+                    let submission = AvailDASubmission {
+                        tx_hash,
+                        block_number: current_block_number,
+                        created_at: None,
+                        status: AvailDispersalStatus::Processing,
+                        ..Default::default()
+                    };
+                    submissions.push(submission);
+                }
+                Err(e) => {
+                    error!("Avail Transaction submission failed: {:?}", e);
+                }
+            }
         }
 
         Ok(submissions)
@@ -154,7 +167,9 @@ impl services::state_listener::port::avail_da::Api for AvailDAClient {
                         "Failed to get latest block number on Avail: {e:?}"
                     ))
                 })?;
-                if block_number - avail_submission.block_number <= 5 {
+                // Time before considering a transaction failed 30 * 20 sec = 10mn
+                // TODO AVAIL - put this in env ?
+                if block_number - avail_submission.block_number <= 30 {
                     AvailDispersalStatus::Processing
                 } else {
                     AvailDispersalStatus::Failed

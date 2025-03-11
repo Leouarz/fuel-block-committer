@@ -16,3 +16,4 @@ thiserror = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 services = { workspace = true }
+tracing = { workspace = true }

@@ -1,13 +1,13 @@
 use crate::types::CollectNonEmpty;
 use itertools::Itertools;
 use metrics::{
-    prometheus::{core::Collector, IntGauge, Opts},
     RegistersMetrics,
+    prometheus::{IntGauge, Opts, core::Collector},
 };
 use nonempty::NonEmpty;
 use tracing::info;
 
-use crate::{types::storage::BundleFragment, Result, Runner};
+use crate::{Result, Runner, types::storage::BundleFragment};
 
 use super::commit_helpers::update_current_height_to_commit_metric;
 
@@ -149,7 +149,7 @@ where
 
         let existing_fragments = self
             .storage
-            .oldest_unsubmitted_fragments(starting_height, 10)
+            .oldest_unsubmitted_fragments(starting_height, 10) // TODO Avail
             .await?;
 
         let fragments = NonEmpty::collect(existing_fragments);
@@ -166,7 +166,7 @@ where
     }
 
     async fn should_submit(&self, _fragments: &NonEmpty<BundleFragment>) -> Result<bool> {
-        // TODO Avail check if avail API is ready to accept more data, probably add a check on the mempool
+        // Transaction pool handles this part.
         Ok(true)
     }
 
