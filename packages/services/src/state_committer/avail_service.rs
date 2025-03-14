@@ -1,4 +1,5 @@
 use crate::types::CollectNonEmpty;
+use crate::{Error as ServiceError, Result, Runner, types::storage::BundleFragment};
 use itertools::Itertools;
 use metrics::{
     RegistersMetrics,
@@ -6,8 +7,6 @@ use metrics::{
 };
 use nonempty::NonEmpty;
 use tracing::info;
-
-use crate::{Result, Runner, types::storage::BundleFragment};
 
 use super::commit_helpers::update_current_height_to_commit_metric;
 
@@ -109,22 +108,35 @@ where
                     .iter()
                     .map(|f| f.id)
                     .take(submitted_txs.len())
-                    .collect_nonempty()
-                    .expect("non-empty vec");
+                    .collect_nonempty();
 
-                for (submitted_tx, fragment_id) in submitted_txs.into_iter().zip(fragment_ids) {
-                    let tx_hash = submitted_tx.tx_hash.clone();
-                    self.storage
-                        .record_availda_submission(
-                            submitted_tx,
-                            fragment_id.as_i32(),
-                            self.clock.now(),
-                        )
-                        .await?;
-                    tracing::info!("Submitted fragment {:?} with tx {:?}", fragment_id, tx_hash);
+                if let Some(fragment_ids) = fragment_ids {
+                    for (submitted_tx, fragment_id) in submitted_txs.into_iter().zip(fragment_ids) {
+                        let tx_hash = submitted_tx.tx_hash.clone();
+                        self.storage
+                            .record_availda_submission(
+                                submitted_tx,
+                                fragment_id.as_i32(),
+                                self.clock.now(),
+                            )
+                            .await?;
+                        tracing::info!(
+                            "Submitted fragment {:?} with tx {:?}",
+                            fragment_id,
+                            tx_hash
+                        );
+                    }
+                    Ok(())
+                } else {
+                    let ids = fragments
+                        .iter()
+                        .map(|f| f.id.as_u32().to_string())
+                        .join(", ");
+                    tracing::error!("Failed to submit fragments {ids}: submitted_txs was empty");
+                    Err(ServiceError::Other(format!(
+                        "Failed to submit fragments {ids}: submitted_txs was empty"
+                    )))
                 }
-
-                Ok(())
             }
             Err(e) => {
                 let ids = fragments
@@ -149,8 +161,13 @@ where
 
         let existing_fragments = self
             .storage
-            .oldest_unsubmitted_fragments(starting_height, 10) // TODO Avail
+            .oldest_unsubmitted_fragments(starting_height, 10) // TODO Avail 40
             .await?;
+
+        println!(
+            "Getting next fragment to submit: length: {:?}",
+            existing_fragments.len()
+        );
 
         let fragments = NonEmpty::collect(existing_fragments);
 

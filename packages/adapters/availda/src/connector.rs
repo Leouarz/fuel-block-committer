@@ -46,7 +46,7 @@ impl AvailDAClient {
 
         let secret_uri = SecretUri::from_str(&key)?;
         let account = Keypair::from_uri(&secret_uri)?;
-        AvailSDK::enable_logging();
+        AvailSDK::enable_logging(); // TODO AVAIL
 
         Ok(Self {
             client: sdk,
@@ -60,12 +60,15 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
         &self,
         fragments: NonEmpty<Fragment>,
     ) -> ServiceResult<Vec<AvailDASubmission>> {
+        info!("AAAAAAAAAAA - Begin submit state fragments, nb fragments: {:?}", fragments.len());
+        let aaa = std::time::Instant::now();
         let account_id = self.signer.public_key().to_account_id().to_string();
         let nonce = account::nonce(&self.client.client, &account_id)
             .await
             .map_err(|e| {
                 ServiceError::Other(format!("Failed to get account nonce on Avail: {e:?}"))
             })?;
+        info!("BBBBBBBBBB - We have the nonce: {:?}", aaa.elapsed());
 
         // TODO AVAIL BIG BLOCKS
         let calls: Vec<Transaction<SubmitDataWithCommitmentsCall>> = fragments
@@ -75,7 +78,7 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
                 let start = std::time::Instant::now();
                 let commitments_result = DaCommitmentBuilder::new(data.clone()).build();
                 let elapsed = start.elapsed();
-                info!("Avail Commitment generation took {:?}", elapsed);
+                info!("CCCCCCCCCC - Avail Commitment generation took {:?}", elapsed);
                 match commitments_result {
                     Ok(commitments) => Some(
                         self.client
@@ -91,11 +94,15 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             })
             .collect();
 
+        info!("CCCCCCCCCC - We have the calls: {:?}", aaa.elapsed());
+
         let mut futures = FuturesOrdered::new();
         for (i, tx) in calls.iter().enumerate() {
             let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
             futures.push_back(tx.execute(&self.signer, options));
         }
+
+        info!("DDDDDDDDDD - We have the futures: {:?}", aaa.elapsed());
 
         // // TODO AVAIL SMALL BLOCKS
         // let calls: Vec<Transaction<SubmitDataCall>> = fragments
@@ -116,8 +123,11 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             ServiceError::Other(format!("Could not get best block number in Avail: {:?}", e))
         })?;
 
+        info!("EEEEEEEEE - We have best block num: {:?}", aaa.elapsed());
+
         let mut submissions = Vec::with_capacity(calls.len());
         while let Some(result) = futures.next().await {
+            info!("AZAZAZAZAZAZ - Transaction execute time: {:?}", aaa.elapsed());
             match result {
                 Ok(tx_hash) => {
                     let submission = AvailDASubmission {
@@ -135,6 +145,7 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             }
         }
 
+        info!("AAAAAAAAAAA - End submit state fragments: time - {:?}", aaa.elapsed());
         Ok(submissions)
     }
 }

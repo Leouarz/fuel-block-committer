@@ -307,7 +307,7 @@ pub async fn start_avail_committer(
         .with_kms_url(main_key.url.clone())
         .with_bundle_accumulation_timeout("3600s".to_owned())
         .with_block_bytes_to_accumulate(bytes_to_accumulate.to_string())
-        .with_bundle_optimization_timeout("60s".to_owned())
+        .with_bundle_optimization_timeout("60s".to_owned()) // TODO AVAIL
         .with_bundle_block_height_lookback("8500".to_owned())
         .with_bundle_compression_level("level6".to_owned())
         .with_bundle_optimization_step("100".to_owned())
