@@ -161,13 +161,8 @@ where
 
         let existing_fragments = self
             .storage
-            .oldest_unsubmitted_fragments(starting_height, 10) // TODO Avail 40
+            .oldest_unsubmitted_fragments(starting_height, 20) // TODO AVAIL
             .await?;
-
-        println!(
-            "Getting next fragment to submit: length: {:?}",
-            existing_fragments.len()
-        );
 
         let fragments = NonEmpty::collect(existing_fragments);
 

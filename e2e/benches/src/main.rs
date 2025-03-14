@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         &deployed_contract,
         &main_key,
         avail_key,
-        "15 MB", // TODO AVAIL
+        "10 MB", // TODO AVAIL
     )
     .await?;
 

@@ -5,7 +5,6 @@ use avail_rust::{
     transactions::da::{SubmitDataCall, SubmitDataWithCommitmentsCall},
 };
 use core::str::FromStr;
-use futures::stream::{FuturesOrdered, StreamExt};
 use services::{
     Error as ServiceError, Result as ServiceResult,
     types::{AvailDASubmission, AvailDispersalStatus, Fragment, NonEmpty},
@@ -17,7 +16,7 @@ use avail_rust::subxt::backend::rpc::{
     RpcClient,
     reconnecting_rpc_client::{ExponentialBackoff, RpcClient as ReconnectingRpcClient},
 };
-use tracing::{error, info};
+use tracing::error;
 
 #[derive(Debug, Clone)]
 pub struct AvailDAClient {
@@ -46,7 +45,6 @@ impl AvailDAClient {
 
         let secret_uri = SecretUri::from_str(&key)?;
         let account = Keypair::from_uri(&secret_uri)?;
-        AvailSDK::enable_logging(); // TODO AVAIL
 
         Ok(Self {
             client: sdk,
@@ -60,25 +58,19 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
         &self,
         fragments: NonEmpty<Fragment>,
     ) -> ServiceResult<Vec<AvailDASubmission>> {
-        info!("AAAAAAAAAAA - Begin submit state fragments, nb fragments: {:?}", fragments.len());
-        let aaa = std::time::Instant::now();
         let account_id = self.signer.public_key().to_account_id().to_string();
         let nonce = account::nonce(&self.client.client, &account_id)
             .await
             .map_err(|e| {
                 ServiceError::Other(format!("Failed to get account nonce on Avail: {e:?}"))
             })?;
-        info!("BBBBBBBBBB - We have the nonce: {:?}", aaa.elapsed());
 
         // TODO AVAIL BIG BLOCKS
         let calls: Vec<Transaction<SubmitDataWithCommitmentsCall>> = fragments
             .into_iter()
             .filter_map(|fragment| {
                 let data: Vec<_> = fragment.data.into_iter().collect();
-                let start = std::time::Instant::now();
                 let commitments_result = DaCommitmentBuilder::new(data.clone()).build();
-                let elapsed = start.elapsed();
-                info!("CCCCCCCCCC - Avail Commitment generation took {:?}", elapsed);
                 match commitments_result {
                     Ok(commitments) => Some(
                         self.client
@@ -94,16 +86,6 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
             })
             .collect();
 
-        info!("CCCCCCCCCC - We have the calls: {:?}", aaa.elapsed());
-
-        let mut futures = FuturesOrdered::new();
-        for (i, tx) in calls.iter().enumerate() {
-            let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
-            futures.push_back(tx.execute(&self.signer, options));
-        }
-
-        info!("DDDDDDDDDD - We have the futures: {:?}", aaa.elapsed());
-
         // // TODO AVAIL SMALL BLOCKS
         // let calls: Vec<Transaction<SubmitDataCall>> = fragments
         //     .into_iter()
@@ -113,22 +95,20 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
         //     })
         //     .collect();
 
-        // let mut futures = FuturesOrdered::new();
-        // for (i, tx) in calls.iter().enumerate() {
-        //     let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
-        //     futures.push_back(tx.execute(&self.signer, options));
-        // }
+        let results =
+            futures::future::join_all(calls.into_iter().enumerate().map(|(i, tx)| async move {
+                let options = avail_rust::Options::new().app_id(0).nonce(nonce + i as u32);
+                tx.execute(&self.signer, options).await
+            }))
+            .await;
 
         let current_block_number = self.client.client.best_block_number().await.map_err(|e| {
             ServiceError::Other(format!("Could not get best block number in Avail: {:?}", e))
         })?;
 
-        info!("EEEEEEEEE - We have best block num: {:?}", aaa.elapsed());
-
-        let mut submissions = Vec::with_capacity(calls.len());
-        while let Some(result) = futures.next().await {
-            info!("AZAZAZAZAZAZ - Transaction execute time: {:?}", aaa.elapsed());
-            match result {
+        let submissions = results
+            .into_iter()
+            .filter_map(|result| match result {
                 Ok(tx_hash) => {
                     let submission = AvailDASubmission {
                         tx_hash,
@@ -137,15 +117,15 @@ impl services::state_committer::port::avail_da::Api for AvailDAClient {
                         status: AvailDispersalStatus::Processing,
                         ..Default::default()
                     };
-                    submissions.push(submission);
+                    Some(submission)
                 }
                 Err(e) => {
                     error!("Avail Transaction submission failed: {:?}", e);
+                    None
                 }
-            }
-        }
+            })
+            .collect();
 
-        info!("AAAAAAAAAAA - End submit state fragments: time - {:?}", aaa.elapsed());
         Ok(submissions)
     }
 }
@@ -179,7 +159,6 @@ impl services::state_listener::port::avail_da::Api for AvailDAClient {
                     ))
                 })?;
                 // Time before considering a transaction failed 30 * 20 sec = 10mn
-                // TODO AVAIL - put this in env ?
                 if block_number - avail_submission.block_number <= 30 {
                     AvailDispersalStatus::Processing
                 } else {

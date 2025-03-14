@@ -329,7 +329,7 @@ pub fn avail_block_bundler(
 ) -> tokio::task::JoinHandle<()> {
     let bundler_factory = services::AvailBundlerFactory::new(
         bundle::Encoder::new(config.app.bundle.compression_level),
-        NonZeroU32::new(5_000_000).unwrap(), // TODO pass this via config // TODO AVAIL
+        NonZeroU32::new(30_000_000).unwrap(), // TODO pass this via config // TODO AVAIL
         config.app.bundle.max_fragments_per_bundle,
     );
 
