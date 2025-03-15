@@ -1,7 +1,7 @@
 use crate::{
     types::{
-        DateTime, DispersalStatus, EigenDASubmission, L1Tx, TransactionCostUpdate,
-        TransactionState, Utc,
+        AvailDASubmission, AvailDispersalStatus, DateTime, DispersalStatus, EigenDASubmission,
+        L1Tx, TransactionCostUpdate, TransactionState, Utc,
     },
     Result,
 };
@@ -36,6 +36,22 @@ pub mod eigen_da {
     }
 }
 
+pub mod avail_da {
+    use crate::{
+        types::{AvailDASubmission, AvailDispersalStatus},
+        Result,
+    };
+
+    #[allow(async_fn_in_trait)]
+    #[trait_variant::make(Send)]
+    #[cfg_attr(feature = "test-helpers", mockall::automock)]
+    pub trait Api {
+        async fn get_blob_status(
+            &self,
+            avail_submission: &AvailDASubmission,
+        ) -> Result<AvailDispersalStatus>;
+    }
+}
 #[allow(async_fn_in_trait)]
 #[trait_variant::make(Send)]
 pub trait Storage: Sync {
@@ -52,6 +68,13 @@ pub trait Storage: Sync {
     // EigenDA
     async fn get_non_finalized_eigen_submission(&self) -> Result<Vec<EigenDASubmission>>;
     async fn update_eigen_submissions(&self, changes: Vec<(u32, DispersalStatus)>) -> Result<()>;
+
+    // AvailDA
+    async fn get_non_finalized_avail_submission(&self) -> Result<Vec<AvailDASubmission>>;
+    async fn update_avail_submissions(
+        &self,
+        changes: Vec<(u32, AvailDispersalStatus)>,
+    ) -> Result<()>;
 }
 
 pub trait Clock {

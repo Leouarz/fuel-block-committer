@@ -10,10 +10,10 @@ use services::{
     block_bundler::{self, port::UnbundledBlocks},
     block_committer, block_importer,
     types::{
+        AvailDASubmission, AvailDispersalStatus, BlockSubmission, BlockSubmissionTx, BundleCost,
+        CompressedFuelBlock, DateTime, DispersalStatus, EigenDASubmission, Fragment, L1Tx,
+        NonEmpty, NonNegative, TransactionCostUpdate, TransactionState, Utc,
         storage::{BundleFragment, SequentialFuelBlocks},
-        BlockSubmission, BlockSubmissionTx, BundleCost, CompressedFuelBlock, DateTime,
-        DispersalStatus, EigenDASubmission, Fragment, L1Tx, NonEmpty, NonNegative,
-        TransactionCostUpdate, TransactionState, Utc,
     },
 };
 use sqlx::Executor;
@@ -224,6 +224,16 @@ impl services::state_listener::port::Storage for DbWithProcess {
     ) -> services::Result<()> {
         unimplemented!();
     }
+
+    async fn get_non_finalized_avail_submission(&self) -> services::Result<Vec<AvailDASubmission>> {
+        unimplemented!();
+    }
+    async fn update_avail_submissions(
+        &self,
+        changes: Vec<(u32, AvailDispersalStatus)>,
+    ) -> services::Result<()> {
+        unimplemented!();
+    }
 }
 
 impl block_importer::port::Storage for DbWithProcess {
@@ -360,6 +370,15 @@ impl services::state_committer::port::Storage for DbWithProcess {
     async fn record_eigenda_submission(
         &self,
         submission: EigenDASubmission,
+        fragment_id: i32,
+        created_at: DateTime<Utc>,
+    ) -> services::Result<()> {
+        unimplemented!()
+    }
+
+    async fn record_availda_submission(
+        &self,
+        submission: AvailDASubmission,
         fragment_id: i32,
         created_at: DateTime<Utc>,
     ) -> services::Result<()> {

@@ -4,6 +4,7 @@ pub use futures::Stream;
 mod non_empty;
 pub use non_empty::*;
 
+mod avail_submission;
 mod block_submission;
 mod bundle_cost;
 mod eigen_submission;
@@ -16,6 +17,7 @@ mod transactions;
 
 pub mod storage;
 
+pub use avail_submission::*;
 pub use block_submission::*;
 pub use bundle_cost::*;
 pub use eigen_submission::*;
