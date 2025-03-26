@@ -28,8 +28,8 @@ use tracing::{error, info};
 
 use crate::{
     config::{self, AvailDA, DALayer, EigenDA},
-    errors::{Error, Result},
     Database, FuelApi, L1,
+    errors::{Error, Result},
 };
 
 pub fn wallet_balance_tracker(
@@ -649,7 +649,7 @@ pub async fn eigen_adapter(
         config.key.clone(),
         config.rpc.clone(),
         Throughput {
-            bytes_per_sec: 2_000_000.try_into().unwrap(),
+            bytes_per_sec: 1_000_000.try_into().unwrap(),
             max_burst: 16_000_000.try_into().unwrap(),
             calls_per_sec: 1.try_into().unwrap(),
         },
