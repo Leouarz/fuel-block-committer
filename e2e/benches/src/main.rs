@@ -10,6 +10,7 @@ use e2e_helpers::{
         start_eth, start_kms,
     },
 };
+use fuel::Url;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
@@ -24,8 +25,8 @@ async fn main() -> Result<()> {
         Compressibility::Medium,
     )));
 
-    let mut fuel_node = FuelNode::new(4000, simulation_config.clone());
-    fuel_node.run().await?;
+    // let mut fuel_node = FuelNode::new(4000, simulation_config.clone());
+    // fuel_node.run().await?;
 
     let logs = false;
     let kms = start_kms(logs).await?;
@@ -40,11 +41,13 @@ async fn main() -> Result<()> {
     let db = start_db().await?;
 
     let logs = true;
+    let url = Url::parse(&"http://127.0.0.1:4000")?;
     let committer = start_avail_committer(
         logs,
         db.clone(),
         &eth_node,
-        &fuel_node.url(),
+        // &fuel_node.url(),
+        &url,
         &deployed_contract,
         &main_key,
         avail_key,
