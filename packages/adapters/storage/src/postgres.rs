@@ -6,9 +6,10 @@ use metrics::{RegistersMetrics, prometheus::IntGauge};
 use services::{
     block_bundler::port::UnbundledBlocks,
     types::{
-        storage::SequentialFuelBlocks, BlockSubmission, BlockSubmissionTx, BundleCost,
-        CompressedFuelBlock, DateTime, DispersalStatus, EigenDASubmission, Fragment, NonEmpty,
-        NonNegative, TransactionCostUpdate, TransactionState, Utc,
+        storage::SequentialFuelBlocks, AvailDASubmission, AvailDispersalStatus, BlockSubmission,
+        BlockSubmissionTx, BundleCost, CompressedFuelBlock, DateTime, DispersalStatus,
+        EigenDASubmission, Fragment, NonEmpty, NonNegative, TransactionCostUpdate,
+        TransactionState, Utc,
     },
 };
 use sqlx::{
@@ -19,6 +20,7 @@ use sqlx::{
 use super::error::{Error, Result};
 use crate::{
     mappings::{
+        avail_tables::{self, AvailSubmissionStatus},
         eigen_tables::{self, SubmissionStatus},
         tables::{self, L1TxState},
     },
@@ -298,8 +300,8 @@ impl Postgres {
             b.end_height >= $2
             AND NOT EXISTS (
                 SELECT 1
-                FROM eigen_submission_fragments tf
-                JOIN eigen_submission t ON t.id = tf.submission_id
+                FROM avail_submission_fragments tf
+                JOIN avail_submission t ON t.id = tf.submission_id
                 WHERE tf.fragment_id = f.id
                   AND t.status <> $1
             )
@@ -1367,6 +1369,78 @@ impl Postgres {
 
             sqlx::query!(
                 "UPDATE eigen_submission SET status = $1 WHERE id = $2",
+                status,
+                id as i32
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn _record_availda_submission(
+        &self,
+        submission: AvailDASubmission,
+        fragment_id: i32,
+        created_at: DateTime<Utc>,
+    ) -> Result<()> {
+        let mut tx = self.connection_pool.begin().await?;
+
+        let row = avail_tables::AvailDASubmission::from(submission);
+        let submission_id = sqlx::query!(
+            "INSERT INTO avail_submission (tx_hash, block_number, status, created_at) VALUES ($1, $2, $3, $4) RETURNING id",
+            row.tx_hash,
+            row.block_number,
+            row.status,
+            created_at
+        )
+        .fetch_one(&mut *tx)
+        .await?
+        .id;
+
+        sqlx::query!(
+            "INSERT INTO avail_submission_fragments (submission_id, fragment_id) VALUES ($1, $2)",
+            submission_id,
+            fragment_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn _get_non_finalized_avail_submission(
+        &self,
+    ) -> Result<Vec<AvailDASubmission>> {
+        sqlx::query_as!(
+            avail_tables::AvailDASubmission,
+            "SELECT id, tx_hash, block_number, created_at, status FROM avail_submission WHERE status = $1 or status = $2",
+            i16::from(avail_tables::AvailSubmissionStatus::Processing),
+            i16::from(avail_tables::AvailSubmissionStatus::Confirmed),
+        )
+        .fetch_all(&self.connection_pool)
+        .await?
+        .into_iter()
+        .map(TryFrom::try_from)
+        .collect::<Result<Vec<_>>>()
+    }
+
+    pub(crate) async fn _update_avail_submissions(
+        &self,
+        changes: Vec<(u32, AvailDispersalStatus)>,
+    ) -> Result<()> {
+        let mut tx = self.connection_pool.begin().await?;
+
+        for (id, status) in changes {
+            let status: i16 = AvailSubmissionStatus::from(status).into();
+
+            sqlx::query!(
+                "UPDATE avail_submission SET status = $1 WHERE id = $2",
                 status,
                 id as i32
             )

@@ -143,14 +143,20 @@ impl Committer {
         if let Some(key) = blob_key {
             cmd.env("COMMITTER__ETH__L1_KEYS__BLOB", key.clone());
         } else if let Some(key) = self.alt_da_key {
-            let key = format!("Private({key})");
-
-            cmd.env("COMMITTER__DA_LAYER__TYPE", "EigenDA")
-                .env(
-                    "COMMITTER__DA_LAYER__RPC",
-                    "https://disperser-holesky.eigenda.xyz",
-                )
-                .env("COMMITTER__DA_LAYER__KEY", key);
+            // TODO Avail: have an actual check on the alt_da type
+            if !key.contains("//") {
+                let key = format!("Private({key})");
+                cmd.env("COMMITTER__DA_LAYER__TYPE", "EigenDA")
+                    .env(
+                        "COMMITTER__DA_LAYER__RPC",
+                        "https://disperser-holesky.eigenda.xyz",
+                    )
+                    .env("COMMITTER__DA_LAYER__KEY", key);
+            } else {
+                cmd.env("COMMITTER__DA_LAYER__TYPE", "AvailDA")
+                    .env("COMMITTER__DA_LAYER__RPC", "wss://turing-rpc.avail.so/ws") // TODO AVAIL: change network
+                    .env("COMMITTER__DA_LAYER__KEY", key);
+            }
         }
 
         let sink = if self.show_logs {

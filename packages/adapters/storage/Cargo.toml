@@ -37,6 +37,7 @@ testcontainers = { workspace = true, optional = true, features = [
 ] }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
+avail-rust = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true }

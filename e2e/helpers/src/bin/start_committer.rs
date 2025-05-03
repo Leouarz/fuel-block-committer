@@ -17,7 +17,8 @@ async fn main() -> Result<()> {
 
     let eth_node = start_eth(false).await?;
     let main_key = create_and_fund_kms_key(&kms, &eth_node).await?;
-    let eigen_key = "".to_string(); // TODO: fill in eigen_key
+    // let eigen_key = "".to_string(); // TODO: fill in eigen_key
+    let avail_key = "//Bob".to_string();
 
     let (contract_args, deployed_contract) = deploy_contract(&eth_node, &main_key).await?;
 
@@ -45,7 +46,7 @@ async fn main() -> Result<()> {
             .with_new_bundle_check_interval("3s".to_owned())
             .with_state_pruner_retention("1s".to_owned())
             .with_state_pruner_run_interval("30s".to_owned())
-            .with_alt_da_key(eigen_key);
+            .with_alt_da_key(avail_key);
 
         committer_builder.start().await?
     };

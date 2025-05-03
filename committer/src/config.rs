@@ -97,6 +97,17 @@ pub struct Fuel {
 pub enum DALayer {
     #[serde(rename = "EigenDA")]
     EigenDA(EigenDA),
+    #[serde(rename = "AvailDA")]
+    AvailDA(AvailDA),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AvailDA {
+    /// Key for posting blobs to Avail DA.
+    pub key: String,
+    /// URL to an AvailDA RPC endpoint.
+    #[serde(deserialize_with = "parse_url")]
+    pub rpc: Url,
 }
 
 #[derive(Debug, Clone, Deserialize)]
